@@ -658,7 +658,7 @@ export default function AdminPanel({ setView }: { setView: any }) {
                       </div>
                       <div className="flex gap-1.5 shrink-0 ml-2">
                         <button
-                          onClick={() => setChannelForm(ch)}
+                          onClick={() => setChannelForm({ ...ch, category: ch.category || '' })}
                           className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 flex items-center justify-center transition"
                           title="تعديل"
                         >
@@ -952,7 +952,7 @@ export default function AdminPanel({ setView }: { setView: any }) {
                         <span className="text-xs text-gray-400 font-medium">القناة: <b className="text-gray-200">{m.channel}</b></span>
                         <div className="flex gap-2">
                           <button
-                            onClick={() => setMatchForm(m)}
+                            onClick={() => setMatchForm({ ...m, commentator: m.commentator || '', league: m.league || '' })}
                             className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 flex items-center justify-center transition"
                           >
                             <EditIcon className="w-4 h-4" />
