@@ -65,6 +65,92 @@ interface ParsedChannel {
   category: string;
 }
 
+function StremioAddonsSection({ state, updateState }: { state: AppState; updateState: any }) {
+  const [newAddonUrl, setNewAddonUrl] = useState('');
+  const [newAddonName, setNewAddonName] = useState('');
+  const addons = state.stremioAddons || [];
+
+  const handleAdd = () => {
+    if (!newAddonUrl.trim()) return;
+    const url = newAddonUrl.trim().replace(/\/manifest\.json$/, '').replace(/\/$/, '');
+    updateState((p: AppState) => ({
+        ...p,
+        stremioAddons: [
+          ...(p.stremioAddons || []),
+          { id: Date.now().toString(), name: newAddonName.trim() || new URL(url).hostname, url: url + '/manifest.json', enabled: true },
+      ],
+    }));
+    setNewAddonUrl('');
+    setNewAddonName('');
+  };
+
+  const handleRemove = (id: string) => {
+    updateState((p: AppState) => ({
+      ...p,
+      stremioAddons: (p.stremioAddons || []).filter((a: any) => a.id !== id),
+    }));
+  };
+
+  const handleToggle = (id: string) => {
+    updateState((p: AppState) => ({
+      ...p,
+      stremioAddons: (p.stremioAddons || []).map((a: any) => a.id === id ? { ...a, enabled: !a.enabled } : a),
+    }));
+  };
+
+  return (
+    <div className="mt-8">
+      <h3 className="text-xl font-black text-white mb-2">إضافات Stremio</h3>
+      <p className="text-xs text-gray-400 mb-4">أضف روابط إضافات Stremio لعرض الأفلام والمسلسلات.</p>
+
+      <div className="flex flex-col gap-3 mb-4">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            className="sport-input flex-1"
+            placeholder="اسم الإضافة (اختياري)"
+            value={newAddonName}
+            onChange={e => setNewAddonName(e.target.value)}
+          />
+          <input
+            type="text"
+            className="sport-input flex-1 text-left"
+            dir="ltr"
+            placeholder="https://example.com/addon/manifest.json"
+            value={newAddonUrl}
+            onChange={e => setNewAddonUrl(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+          />
+          <button onClick={handleAdd} className="px-4 py-2 rounded-xl bg-[var(--color-primary-custom)] text-white font-bold text-xs hover:opacity-90 transition shrink-0">
+            إضافة
+          </button>
+        </div>
+      </div>
+
+      {addons.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          {addons.map((addon: any) => (
+            <div key={addon.id} className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5">
+              <button onClick={() => handleToggle(addon.id)} className={`w-10 h-6 rounded-full transition-all relative shrink-0 ${addon.enabled ? 'bg-emerald-600' : 'bg-gray-600'}`}>
+                <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${addon.enabled ? 'right-1' : 'right-5'}`} />
+              </button>
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-sm font-bold truncate">{addon.name}</p>
+                <p className="text-gray-500 text-[10px] truncate" dir="ltr">{addon.url}</p>
+              </div>
+              <button onClick={() => handleRemove(addon.id)} className="text-red-400 hover:text-red-300 transition p-1">
+                <TrashIcon className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-6 text-gray-500 text-xs font-bold">لا توجد إضافات بعد</div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPanel({ setView }: { setView: any }) {
   const { state, setState, syncToCloud } = useAppContext();
   const [tab, setTab] = useState('channels');
@@ -140,6 +226,16 @@ export default function AdminPanel({ setView }: { setView: any }) {
       setJsonError(null);
     }
   }, [tab, state]);
+
+  // إرجاع التبويب الأول المرئي إذا كان التبويب الحالي مخفياً
+  useEffect(() => {
+    const allTabs = ['channels', 'matches', 'settings', 'json_editor', 'm3u_import', 'categories'];
+    const hidden = state.settings.hiddenTabs || [];
+    const visibleTabs = allTabs.filter(t => !hidden.includes(t));
+    if (hidden.includes(tab) && visibleTabs.length > 0) {
+      setTab(visibleTabs[0]);
+    }
+  }, [state.settings.hiddenTabs, tab]);
 
   // إدارة القنوات - حفظ / تعديل
   const handleSaveChannel = () => {
@@ -364,60 +460,72 @@ export default function AdminPanel({ setView }: { setView: any }) {
 
       {/* التبويبات */}
       <div className="flex flex-wrap gap-2 mb-6 bg-black/30 p-1.5 rounded-2xl border border-white/5">
-        <button
-          onClick={() => setTab('channels')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs lg:text-sm transition-all ${
-            tab === 'channels' ? 'bg-[var(--color-primary-custom)] text-white shadow-lg shadow-[var(--color-primary-custom)]/20' : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          <Tv size={16} />
-          إدارة القنوات
-        </button>
-        <button
-          onClick={() => setTab('matches')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs lg:text-sm transition-all ${
-            tab === 'matches' ? 'bg-[var(--color-primary-custom)] text-white shadow-lg shadow-[var(--color-primary-custom)]/20' : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          <Calendar size={16} />
-          إدارة المباريات
-        </button>
-        <button
-          onClick={() => setTab('settings')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs lg:text-sm transition-all ${
-            tab === 'settings' ? 'bg-[var(--color-primary-custom)] text-white shadow-lg shadow-[var(--color-primary-custom)]/20' : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          <Settings size={16} />
-          إعدادات الواجهة
-        </button>
-        <button
-          onClick={() => setTab('json_editor')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs lg:text-sm transition-all ${
-            tab === 'json_editor' ? 'bg-[var(--color-primary-custom)] text-white shadow-lg shadow-[var(--color-primary-custom)]/20' : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          <CodeIcon className="w-4 h-4" />
-          تعديل JSON
-        </button>
-        <button
-          onClick={() => setTab('m3u_import')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs lg:text-sm transition-all ${
-            tab === 'm3u_import' ? 'bg-[var(--color-primary-custom)] text-white shadow-lg shadow-[var(--color-primary-custom)]/20' : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          <UploadIcon className="w-4 h-4" />
-          استيراد M3U
-        </button>
-        <button
-          onClick={() => setTab('categories')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs lg:text-sm transition-all ${
-            tab === 'categories' ? 'bg-[var(--color-primary-custom)] text-white shadow-lg shadow-[var(--color-primary-custom)]/20' : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          📂
-          إدارة التصنيفات
-        </button>
+        {!state.settings.hiddenTabs?.includes('channels') && (
+          <button
+            onClick={() => setTab('channels')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs lg:text-sm transition-all ${
+              tab === 'channels' ? 'bg-[var(--color-primary-custom)] text-white shadow-lg shadow-[var(--color-primary-custom)]/20' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Tv size={16} />
+            إدارة القنوات
+          </button>
+        )}
+        {!state.settings.hiddenTabs?.includes('matches') && (
+          <button
+            onClick={() => setTab('matches')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs lg:text-sm transition-all ${
+              tab === 'matches' ? 'bg-[var(--color-primary-custom)] text-white shadow-lg shadow-[var(--color-primary-custom)]/20' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Calendar size={16} />
+            إدارة المباريات
+          </button>
+        )}
+        {!state.settings.hiddenTabs?.includes('settings') && (
+          <button
+            onClick={() => setTab('settings')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs lg:text-sm transition-all ${
+              tab === 'settings' ? 'bg-[var(--color-primary-custom)] text-white shadow-lg shadow-[var(--color-primary-custom)]/20' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Settings size={16} />
+            إعدادات الواجهة
+          </button>
+        )}
+        {!state.settings.hiddenTabs?.includes('json_editor') && (
+          <button
+            onClick={() => setTab('json_editor')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs lg:text-sm transition-all ${
+              tab === 'json_editor' ? 'bg-[var(--color-primary-custom)] text-white shadow-lg shadow-[var(--color-primary-custom)]/20' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <CodeIcon className="w-4 h-4" />
+            تعديل JSON
+          </button>
+        )}
+        {!state.settings.hiddenTabs?.includes('m3u_import') && (
+          <button
+            onClick={() => setTab('m3u_import')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs lg:text-sm transition-all ${
+              tab === 'm3u_import' ? 'bg-[var(--color-primary-custom)] text-white shadow-lg shadow-[var(--color-primary-custom)]/20' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <UploadIcon className="w-4 h-4" />
+            استيراد M3U
+          </button>
+        )}
+        {!state.settings.hiddenTabs?.includes('categories') && (
+          <button
+            onClick={() => setTab('categories')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs lg:text-sm transition-all ${
+              tab === 'categories' ? 'bg-[var(--color-primary-custom)] text-white shadow-lg shadow-[var(--color-primary-custom)]/20' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            📂
+            إدارة التصنيفات
+          </button>
+        )}
       </div>
 
       {hasUnsavedChanges && (
@@ -615,7 +723,7 @@ export default function AdminPanel({ setView }: { setView: any }) {
                     <input
                       type="text"
                       placeholder="بحث عن قناة..."
-                      className="sport-input pr-10"
+                      className="sport-input !pr-14"
                       value={channelSearch}
                       onChange={e => setChannelSearch(e.target.value)}
                     />
@@ -1088,10 +1196,104 @@ export default function AdminPanel({ setView }: { setView: any }) {
                 />
               </div>
             </div>
+
+            <div className="mt-8">
+              <h3 className="text-xl font-black text-white mb-2">إظهار / إخفاء الأقسام</h3>
+              <p className="text-xs text-gray-400 mb-4">اختر الأقسام المراد إظهارها أو إخفاؤها في لوحة التحكم.</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {[
+                  { key: 'channels', label: 'إدارة القنوات' },
+                  { key: 'matches', label: 'إدارة المباريات' },
+                  { key: 'settings', label: 'إعدادات الواجهة' },
+                  { key: 'json_editor', label: 'تعديل JSON' },
+                  { key: 'm3u_import', label: 'استيراد M3U' },
+                  { key: 'categories', label: 'إدارة التصنيفات' },
+                ].map(item => {
+                  const isHidden = state.settings.hiddenTabs?.includes(item.key) ?? false;
+                  return (
+                    <button
+                      key={item.key}
+                      onClick={() => {
+                        updateState(p => {
+                          const hidden = p.settings.hiddenTabs || [];
+                          const newHidden = isHidden ? hidden.filter(k => k !== item.key) : [...hidden, item.key];
+                          return { ...p, settings: { ...p.settings, hiddenTabs: newHidden } };
+                        });
+                      }}
+                      className={`flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-xs transition-all border ${
+                        isHidden
+                          ? 'bg-red-500/10 border-red-500/30 text-red-400'
+                          : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                      }`}
+                    >
+                      {isHidden ? '🙈' : '👁️'}
+                      <span>{item.label}</span>
+                      <span className="mr-auto text-[10px] font-bold">{isHidden ? 'مخفي' : 'ظاهر'}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mt-8">
+              <h3 className="text-xl font-black text-white mb-2">إظهار / إخفاء أقسام الموقع</h3>
+              <p className="text-xs text-gray-400 mb-4">اختر الأقسام التي تظهر في الشريط السفلي للمستخدم.</p>
+              <div className="flex flex-col gap-3">
+                {[
+                  { key: 'channels', defaultLabel: 'القنوات', icon: '📺' },
+                  { key: 'matches', defaultLabel: 'المباريات', icon: '📅' },
+                  { key: 'schedule', defaultLabel: 'الجدول', icon: '🏆' },
+                  { key: 'movies', defaultLabel: 'المحتوى المجاني', icon: '🎬' },
+                  { key: 'football', defaultLabel: 'المباريات والنتائج', icon: '⚽' },
+                  { key: 'stremio', defaultLabel: 'Stremio', icon: '🎞️' },
+                ].map(item => {
+                  const isHidden = state.settings.hiddenSections?.includes(item.key) ?? false;
+                  const currentLabel = state.settings.sectionLabels?.[item.key] || item.defaultLabel;
+                  return (
+                    <div key={item.key} className="flex items-center gap-3">
+                      <button
+                        onClick={() => {
+                          updateState(p => {
+                            const hidden = p.settings.hiddenSections || [];
+                            const newHidden = isHidden ? hidden.filter(k => k !== item.key) : [...hidden, item.key];
+                            return { ...p, settings: { ...p.settings, hiddenSections: newHidden } };
+                          });
+                        }}
+                        className={`shrink-0 w-14 h-10 flex items-center justify-center rounded-xl font-bold text-sm transition-all border ${
+                          isHidden
+                            ? 'bg-red-500/10 border-red-500/30 text-red-400'
+                            : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                        }`}
+                      >
+                        {isHidden ? '🙈' : '👁️'}
+                      </button>
+                      <span className="text-lg">{item.icon}</span>
+                      <input
+                        type="text"
+                        className="sport-input flex-1"
+                        value={currentLabel}
+                        onChange={e => {
+                          updateState(p => ({
+                            ...p,
+                            settings: {
+                              ...p.settings,
+                              sectionLabels: { ...p.settings.sectionLabels, [item.key]: e.target.value },
+                            },
+                          }));
+                        }}
+                      />
+                      <span className={`text-[10px] font-bold shrink-0 ${isHidden ? 'text-red-400' : 'text-emerald-400'}`}>
+                        {isHidden ? 'مخفي' : 'ظاهر'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <StremioAddonsSection state={state} updateState={updateState} />
           </div>
         )}
-
-        {/* محرر JSON المباشر */}
         {tab === 'json_editor' && (
           <div className="flex flex-col gap-4">
             <div className="flex justify-between items-center">
@@ -1172,7 +1374,7 @@ export default function AdminPanel({ setView }: { setView: any }) {
                   <input
                     type="text"
                     placeholder="بحث في القنوات المفسرة..."
-                    className="sport-input pr-10"
+                    className="sport-input !pr-14"
                     value={m3uSearch}
                     onChange={e => setM3uSearch(e.target.value)}
                   />

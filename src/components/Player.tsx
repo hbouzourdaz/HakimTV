@@ -4,7 +4,6 @@ import Hls from "hls.js";
 import { Channel } from "@/context/AppContext";
 import { Maximize, Minimize, RefreshCcw, AlertCircle, RotateCw } from "lucide-react";
 
-// ── Inline YouTube SVG (lucide doesn't have this icon in this version) ──
 function YtIcon({ size = 16, className = "" }: { size?: number; className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
@@ -13,9 +12,6 @@ function YtIcon({ size = 16, className = "" }: { size?: number; className?: stri
   );
 }
 
-// ──────────────────────────────────────────────
-// Utility: detect & extract YouTube video ID
-// ──────────────────────────────────────────────
 function isYouTubeUrl(url: string): boolean {
   return /(?:youtube\.com|youtu\.be)/i.test(url);
 }
@@ -37,9 +33,6 @@ function getYouTubeVideoId(url: string): string | null {
   return null;
 }
 
-// ──────────────────────────────────────────────
-// YouTube Embed Sub-component
-// ──────────────────────────────────────────────
 function YouTubePlayer({ url }: { url: string }) {
   const videoId = getYouTubeVideoId(url);
   const [key, setKey] = useState(0);
@@ -67,12 +60,10 @@ function YouTubePlayer({ url }: { url: string }) {
         title="YouTube Player"
         style={{ border: 'none' }}
       />
-      {/* YouTube badge */}
       <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 bg-red-600/90 backdrop-blur-sm text-white text-[10px] font-black px-2.5 py-1 rounded-full border border-red-500/50 shadow-lg">
         <YtIcon size={12} />
         YouTube
       </div>
-      {/* Reload iframe button */}
       <button
         onClick={() => setKey(k => k + 1)}
         title="تحديث"
@@ -84,102 +75,152 @@ function YouTubePlayer({ url }: { url: string }) {
   );
 }
 
-// ──────────────────────────────────────────────
-// Main Player Component
-// ──────────────────────────────────────────────
-export default function Player({ channel }: { channel: Channel | null }) {
-  const videoRef     = useRef<HTMLVideoElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const hlsRef       = useRef<Hls | null>(null);
+function getStreamType(url: string): "hls" | "direct" {
+  let pathname = '';
+  try { pathname = new URL(url).pathname; } catch (_) { pathname = url; }
+  if (/\.m3u8$/i.test(pathname)) return "hls";
+  return "direct";
+}
 
-  const [error,        setError]        = useState<string | null>(null);
-  const [loading,      setLoading]      = useState<boolean>(true);
-  const [reloadKey,    setReloadKey]    = useState<number>(0);
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [refreshSpin,  setRefreshSpin]  = useState<boolean>(false);
+function HlsPlayer({ url }: { url: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const hlsRef = useRef<Hls | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const isYT = channel ? isYouTubeUrl(channel.url) : false;
-
-  // ──────────────────────────────────────────────
-  // HLS / direct stream loader
-  // ──────────────────────────────────────────────
   useEffect(() => {
-    if (!channel || !videoRef.current || isYT) return;
+    window.dispatchEvent(new Event('stop-all-audio'));
+    const el = videoRef.current;
+    if (!el) return;
 
     setError(null);
     setLoading(true);
-    const videoElement = videoRef.current;
 
     if (hlsRef.current) {
-      try { hlsRef.current.destroy(); } catch (e) { console.error("HLS destroy:", e); }
+      try { hlsRef.current.destroy(); } catch (_) {}
       hlsRef.current = null;
     }
 
-    const isM3u8 = channel.url.includes('.m3u8') || channel.url.includes('.ts');
+    if (Hls.isSupported()) {
+      const hls = new Hls({ maxMaxBufferLength: 30, enableWorker: true, lowLatencyMode: true });
+      hlsRef.current = hls;
+      hls.loadSource(url);
+      hls.attachMedia(el);
 
-    if (isM3u8) {
-      if (Hls.isSupported()) {
-        const hls = new Hls({ maxMaxBufferLength: 30, enableWorker: true, lowLatencyMode: true });
-        hlsRef.current = hls;
-        hls.loadSource(channel.url);
-        hls.attachMedia(videoElement);
-
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          setLoading(false);
-          const p = videoElement.play();
-          if (p && typeof p.catch === 'function') p.catch(() => {});
-        });
-
-        let mr = 0, nr = 0;
-        hls.on(Hls.Events.ERROR, (_, data) => {
-          if (!data.fatal) return;
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            if (nr < 3) { nr++; hls.startLoad(); }
-            else { setError("فشل تحميل البث. تحقق من الرابط أو اضغط تحديث."); setLoading(false); }
-          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-            if (mr < 3) { mr++; hls.recoverMediaError(); }
-            else { setError("فشل في فك تشفير البث. جرّب الضغط على تحديث."); setLoading(false); }
-          } else {
-            setError("خطأ غير متوقع في البث."); setLoading(false); hls.destroy();
-          }
-        });
-
-      } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-        videoElement.src = channel.url;
-        const fn = () => { setLoading(false); videoElement.play().catch(() => {}); };
-        videoElement.addEventListener('loadedmetadata', fn);
-        return () => videoElement.removeEventListener('loadedmetadata', fn);
-      } else {
-        setError("متصفحك لا يدعم تشغيل هذا النوع من البث المباشر.");
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
         setLoading(false);
-        return;
-      }
-    } else {
-      videoElement.src = channel.url;
-      const fn = () => { setLoading(false); videoElement.play().catch(() => {}); };
-      videoElement.addEventListener('loadedmetadata', fn);
-      return () => videoElement.removeEventListener('loadedmetadata', fn);
-    }
+        el.play().catch(() => {});
+      });
 
-    const onErr  = () => { setError("فشل الاتصال بسيرفر القناة."); setLoading(false); };
-    const onWait = () => setLoading(true);
+      let mr = 0, nr = 0;
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (!data.fatal) return;
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          if (nr < 3) { nr++; hls.startLoad(); }
+          else { setError("فشل تحميل البث. تحقق من الرابط."); setLoading(false); }
+        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          if (mr < 3) { mr++; hls.recoverMediaError(); }
+          else { setError("فشل في فك تشفير البث."); setLoading(false); }
+        } else {
+          setError("خطأ غير متوقع في البث."); setLoading(false); hls.destroy();
+        }
+      });
+
+      return () => { hls.destroy(); hlsRef.current = null; };
+
+    } else if (el.canPlayType('application/vnd.apple.mpegurl')) {
+      el.src = url;
+      const onMeta = () => { setLoading(false); el.play().catch(() => {}); };
+      el.addEventListener('loadedmetadata', onMeta);
+      return () => el.removeEventListener('loadedmetadata', onMeta);
+
+    } else {
+      setError("متصفحك لا يدعم هذا النوع من البث المباشر.");
+      setLoading(false);
+    }
+  }, [url]);
+
+  return (
+    <div className="relative w-full h-full">
+      <video ref={videoRef} className="w-full h-full object-contain" controls playsInline autoPlay />
+      {loading && !error && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm z-40 pointer-events-none">
+          <div className="w-12 h-12 border-4 border-[var(--color-primary-custom)] border-t-transparent rounded-full animate-spin" />
+          <span className="text-white mt-4 font-bold text-sm">جاري تحميل البث...</span>
+        </div>
+      )}
+      {error && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm z-50 gap-4 px-6 text-center">
+          <AlertCircle size={40} className="text-red-400" />
+          <p className="text-red-300 font-bold text-sm leading-relaxed max-w-sm">{error}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DirectPlayer({ url }: { url: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(false as any);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+
+    setError(null);
+    setLoading(true);
+
+    let pathname = '';
+    try { pathname = new URL(url).pathname; } catch (_) { pathname = url; }
+    const isTs = /\.ts$/i.test(pathname);
+
+    el.src = url;
+    if (isTs) el.setAttribute('type', 'video/mp2t');
+
+    const onMeta = () => { setLoading(false); el.play().catch(() => {}); };
     const onPlay = () => setLoading(false);
-    videoElement.addEventListener('error',   onErr);
-    videoElement.addEventListener('waiting', onWait);
-    videoElement.addEventListener('playing', onPlay);
+    const onErr = () => { setError("فشل تشغيل الفيديو. تحقق من الرابط."); setLoading(false); };
+
+    el.addEventListener('loadedmetadata', onMeta);
+    el.addEventListener('playing', onPlay);
+    el.addEventListener('error', onErr);
 
     return () => {
-      videoElement.removeEventListener('error',   onErr);
-      videoElement.removeEventListener('waiting', onWait);
-      videoElement.removeEventListener('playing', onPlay);
-      if (hlsRef.current) {
-        try { hlsRef.current.destroy(); } catch (e) { console.error("Cleanup HLS:", e); }
-        hlsRef.current = null;
-      }
+      el.removeEventListener('loadedmetadata', onMeta);
+      el.removeEventListener('playing', onPlay);
+      el.removeEventListener('error', onErr);
     };
-  }, [channel, reloadKey, isYT]);
+  }, [url]);
 
-  // ── Fullscreen + auto-rotate landscape ──
+  return (
+    <div className="relative w-full h-full">
+      <video ref={videoRef} className="w-full h-full object-contain" controls playsInline autoPlay />
+      {loading && !error && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm z-40 pointer-events-none">
+          <div className="w-12 h-12 border-4 border-[var(--color-primary-custom)] border-t-transparent rounded-full animate-spin" />
+          <span className="text-white mt-4 font-bold text-sm">جاري تحميل البث...</span>
+        </div>
+      )}
+      {error && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm z-50 gap-4 px-6 text-center">
+          <AlertCircle size={40} className="text-red-400" />
+          <p className="text-red-300 font-bold text-sm leading-relaxed max-w-sm">{error}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function Player({ channel }: { channel: Channel | null }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const [reloadKey, setReloadKey] = useState<number>(0);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [refreshSpin, setRefreshSpin] = useState<boolean>(false);
+
+  const isYT = channel ? isYouTubeUrl(channel.url) : false;
+
   const handleFullscreen = useCallback(async () => {
     const el = containerRef.current;
     if (!el) return;
@@ -204,63 +245,33 @@ export default function Player({ channel }: { channel: Channel | null }) {
     return () => document.removeEventListener('fullscreenchange', fn);
   }, []);
 
-  // ── Refresh (HLS only) ──
   const handleRefresh = useCallback(() => {
     setRefreshSpin(true);
     setTimeout(() => setRefreshSpin(false), 800);
-    setError(null);
-    setLoading(true);
     setReloadKey(k => k + 1);
   }, []);
 
   if (!channel) return null;
 
+  const streamType = !isYT ? getStreamType(channel.url) : null;
+
   return (
     <div className="view-section active px-4 lg:px-10 py-4 h-full w-full relative z-10 pb-20">
       <div className="w-full max-w-5xl mx-auto flex flex-col gap-4 z-10">
 
-        {/* ─── Video / YouTube Container ─── */}
         <div
           ref={containerRef}
           className="relative w-full bg-black aspect-video rounded-xl lg:rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.8)] border border-white/20"
         >
           {isYT ? (
             <YouTubePlayer url={channel.url} />
+          ) : streamType === "hls" ? (
+            <HlsPlayer key={reloadKey} url={channel.url} />
           ) : (
-            <>
-              <video
-                ref={videoRef}
-                className="w-full h-full object-contain"
-                controls
-                playsInline
-                autoPlay
-              />
-
-              {loading && !error && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm z-40 pointer-events-none">
-                  <div className="w-12 h-12 border-4 border-[var(--color-primary-custom)] border-t-transparent rounded-full animate-spin" />
-                  <span className="text-white mt-4 font-bold text-sm">جاري تحميل البث...</span>
-                </div>
-              )}
-
-              {error && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm z-50 gap-4 px-6 text-center">
-                  <AlertCircle size={40} className="text-red-400" />
-                  <p className="text-red-300 font-bold text-sm leading-relaxed max-w-sm">{error}</p>
-                  <button
-                    onClick={handleRefresh}
-                    className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[var(--color-primary-custom)] text-white font-bold text-sm hover:opacity-90 active:scale-95 transition-all shadow-lg"
-                  >
-                    <RefreshCcw size={16} />
-                    إعادة المحاولة
-                  </button>
-                </div>
-              )}
-            </>
+            <DirectPlayer key={reloadKey} url={channel.url} />
           )}
         </div>
 
-        {/* ─── Control Bar ─── */}
         <div className="flex items-center gap-3 flex-wrap">
           {!isYT && (
             <button
@@ -297,7 +308,6 @@ export default function Player({ channel }: { channel: Channel | null }) {
           </div>
         </div>
 
-        {/* ─── Channel Info Card ─── */}
         <div className="shrink-0 glass-card p-4 lg:p-5 flex items-center gap-4 border-t-2 border-t-[var(--color-primary-custom)]">
           {channel.logo ? (
             <img

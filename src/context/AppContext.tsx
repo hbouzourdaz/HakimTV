@@ -24,6 +24,13 @@ export type Match = {
   league?: string;
 };
 
+export type StremioAddon = {
+  id: string;
+  name: string;
+  url: string;
+  enabled: boolean;
+};
+
 export type AppState = {
   settings: {
     appName: string;
@@ -35,10 +42,14 @@ export type AppState = {
     marqueeText?: string;
     adminUsername?: string;
     adminPassword?: string;
+    hiddenTabs?: string[];
+    hiddenSections?: string[];
+    sectionLabels?: { [key: string]: string };
   };
   channels: Channel[];
   matches: Match[];
   categories: { name: string; icon: string; parent?: string }[];
+  stremioAddons: StremioAddon[];
 };
 
 type AppContextType = {
@@ -63,6 +74,12 @@ const defaultState: AppState = {
   channels: [],
   matches: [],
   categories: [],
+  stremioAddons: [
+    { id: '1', name: 'StreamAR (عربي مجاني)', url: 'https://2ecbbd610840-stremio-ar.baby-beamup.club/manifest.json', enabled: true },
+    { id: '2', name: 'Akwam (عربي مجاني)', url: 'https://stremio-addons.net/addons/community.aymene69.akwam/manifest.json', enabled: true },
+    { id: '3', name: 'Arabic Subs (ترجمة عربية)', url: 'https://dni798-arabic-subs-addon.hf.space/manifest.json', enabled: true },
+    { id: '4', name: 'Cinemata (كتالوج)', url: 'https://cinemeta-catalogs.strem.io/manifest.json', enabled: true },
+  ],
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -88,8 +105,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (response.ok) {
         const data = await response.json();
         if (data.record && data.record.settings) {
-          setState(data.record);
-          localStorage.setItem("iptv_state_backup", JSON.stringify(data.record));
+          const mergedState = { ...defaultState, ...data.record, stremioAddons: (data.record.stremioAddons && data.record.stremioAddons.length > 0) ? data.record.stremioAddons : defaultState.stremioAddons };
+          setState(mergedState);
+          localStorage.setItem("iptv_state_backup", JSON.stringify(mergedState));
         } else if (data.record && data.record.matches) {
           setState((prev) => ({ ...prev, matches: data.record.matches }));
         }
@@ -98,7 +116,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       console.error("Failed to fetch cloud data", error);
       const backup = localStorage.getItem("iptv_state_backup");
       if (backup) {
-        setState(JSON.parse(backup));
+        const backupData = JSON.parse(backup);
+        setState({ ...defaultState, ...backupData, stremioAddons: (backupData.stremioAddons && backupData.stremioAddons.length > 0) ? backupData.stremioAddons : defaultState.stremioAddons });
       }
     }
     setLoading(false);

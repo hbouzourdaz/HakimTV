@@ -1,23 +1,32 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
 import BottomNav from "@/components/BottomNav";
 import ChannelsGrid from "@/components/ChannelsGrid";
 import MatchesGrid from "@/components/MatchesGrid";
+import MatchesSchedule from "@/components/MatchesSchedule";
+import StremioCatalog from "@/components/StremioCatalog";
+import FreeMovies from "@/components/FreeMovies";
+import FootballStats from "@/components/FootballStats";
+import LiveRadio from "@/components/LiveRadio";
+import Podcasts from "@/components/Podcasts";
 import dynamic from "next/dynamic";
 import AdminPanel from "@/components/AdminPanel";
+import HomeView from "@/components/HomeView";
 import { Channel, useAppContext } from "@/context/AppContext";
 import SplashScreen from "@/components/SplashScreen";
 
 const Player = dynamic(() => import("@/components/Player"), { ssr: false });
 
 export default function Home() {
-  const [view, setView] = useState('channels');
+  const [view, setView] = useState('home');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
   const [adminUsername, setAdminUsername] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+  const previousViewRef = useRef('home');
+  const currentViewRef = useRef('home');
 
   const { state, loading } = useAppContext();
 
@@ -34,9 +43,35 @@ export default function Home() {
   }, [state.settings.appBackground]);
 
   const handlePlay = (channel: Channel) => {
+    previousViewRef.current = currentViewRef.current;
     setActiveChannel(channel);
     setView('player');
   };
+
+  useEffect(() => {
+    currentViewRef.current = view;
+  });
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const channel = (e as CustomEvent).detail as Channel;
+      previousViewRef.current = currentViewRef.current;
+      setActiveChannel(channel);
+      setView('player');
+    };
+    window.addEventListener('stremio-play', handler);
+    return () => window.removeEventListener('stremio-play', handler);
+  }, []);
+
+  // إرجاع المستخدم لأول قسم مرئي إذا كان القسم الحالي مخفياً
+  useEffect(() => {
+    const hidden = state.settings.hiddenSections || [];
+    const sections = ['home', 'channels', 'matches', 'schedule', 'movies', 'football', 'stremio', 'radio', 'podcasts'];
+    if (hidden.includes(view) && sections.includes(view)) {
+      const firstVisible = sections.find(s => !hidden.includes(s));
+      if (firstVisible) setView(firstVisible);
+    }
+  }, [state.settings.hiddenSections, view]);
 
   return (
     <>
@@ -49,7 +84,7 @@ export default function Home() {
           </div>
         </div>
       )}
-      <Header view={view} setView={setView} toggleSidebar={() => setIsSidebarOpen(true)} />
+      <Header view={view} setView={setView} toggleSidebar={() => setIsSidebarOpen(true)} onBack={() => setView(previousViewRef.current)} />
       <Sidebar isOpen={isSidebarOpen} closeSidebar={() => setIsSidebarOpen(false)} setView={setView} />
       
       {view === 'admin_auth' && (
@@ -90,7 +125,7 @@ export default function Home() {
                 />
                 
                 <div className="flex gap-3">
-                    <button onClick={() => setView('channels')} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 font-bold hover:bg-gray-700 transition">إلغاء</button>
+                    <button onClick={() => setView('home')} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 font-bold hover:bg-gray-700 transition">إلغاء</button>
                     <button onClick={() => { 
                       const validUsername = state.settings.adminUsername || 'admin';
                       const validPassword = state.settings.adminPassword || '123';
@@ -107,8 +142,15 @@ export default function Home() {
         </div>
       )}
 
+      {view === 'home' && <HomeView setView={setView} />}
       {view === 'channels' && <ChannelsGrid onPlay={handlePlay} />}
       {view === 'matches' && <MatchesGrid onPlay={handlePlay} />}
+      {view === 'schedule' && <MatchesSchedule />}
+      {view === 'movies' && <FreeMovies />}
+      {view === 'football' && <FootballStats />}
+      {view === 'stremio' && <StremioCatalog />}
+      {view === 'radio' && <LiveRadio />}
+      {view === 'podcasts' && <Podcasts />}
       {view === 'player' && <Player channel={activeChannel} />}
       {view === 'admin' && <AdminPanel setView={setView} />}
 

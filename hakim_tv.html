@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Hakim TV</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome للأيقونات -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- خط IBM Plex Sans Arabic و Montserrat -->
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Montserrat:ital,wght@0,700;0,900;1,800&display=swap" rel="stylesheet">
+    
+    <!-- مكتبة mpegts.js لتشغيل البث -->
+    <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { 
+                        sans: ['"IBM Plex Sans Arabic"', 'sans-serif'],
+                        sport: ['Montserrat', 'sans-serif']
+                    },
+                    colors: {
+                        sport: {
+                            primary: '#5E227F', /* لون beIN البنفسجي الأساسي */
+                            primaryDark: '#3a1350',
+                            black: '#050505',
+                            card: 'rgba(20, 20, 20, 0.7)',
+                            border: 'rgba(255, 255, 255, 0.08)'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* إعدادات التطبيق الصلب */
+        html, body {
+            margin: 0; padding: 0; width: 100vw; height: 100vh;
+            overflow: hidden; background-color: #000; color: #fff;
+            user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+            overscroll-behavior: none; transition: background-color 0.4s ease;
+        }
+
+        #app-container {
+            width: 100%; height: 100%; background-color: #050505;
+            position: relative; overflow: hidden; display: flex; flex-direction: column;
+            background-image: 
+                radial-gradient(circle at 10% 10%, rgba(255, 255, 255, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 90% 10%, rgba(255, 255, 255, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 50% 100%, rgba(94, 34, 127, 0.15) 0%, transparent 60%);
+            transition: all 0.4s ease; background-size: cover; background-position: center;
+        }
+
+        #splash-screen {
+            position: absolute; inset: 0; background-color: #050505;
+            background-image: radial-gradient(circle at 50% 100%, rgba(94, 34, 127, 0.2) 0%, transparent 60%);
+            z-index: 100; display: flex; flex-direction: column; justify-content: center; align-items: center;
+            transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.6s;
+        }
+
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(94,34,127,0.5); }
+
+        .glass-card {
+            background: var(--tw-colors-sport-card); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--tw-colors-sport-border); box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.3s ease, background 0.3s ease, border-color 0.3s ease;
+        }
+
+        .view-section { display: none; flex: 1; overflow-y: auto; overflow-x: hidden; flex-direction: column; width: 100%; height: 100%; }
+        .view-section.active { display: flex; animation: fadeScaleUp 0.35s cubic-bezier(0.1, 0.8, 0.2, 1) forwards; }
+
+        .logo-text { font-family: 'Montserrat', sans-serif; font-weight: 900; font-style: italic; letter-spacing: -1px; }
+
+        .sport-input {
+            width: 100%; background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.1);
+            padding: 12px 16px; border-radius: 8px; outline: none; transition: all 0.3s;
+        }
+        .sport-input:focus { border-color: #5E227F; box-shadow: 0 0 8px rgba(94,34,127,0.3); }
+        video::backdrop { background-color: black; }
+
+        /* الأنيميشن */
+        @keyframes fadeScaleUp { from { opacity: 0; transform: translateY(20px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes pulseGlow { 0% { box-shadow: 0 0 15px rgba(94,34,127,0.4); } 50% { box-shadow: 0 0 25px rgba(94,34,127,0.8); } 100% { box-shadow: 0 0 15px rgba(94,34,127,0.4); } }
+        @keyframes popIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+        
+        .animate-pulse-glow { animation: pulseGlow 2s infinite; }
+        .grid-item-enter { animation: popIn 0.4s cubic-bezier(0.1, 0.8, 0.2, 1) backwards; }
+        .hover-lift:hover { transform: translateY(-4px) scale(1.02); box-shadow: 0 20px 40px rgba(94,34,127,0.4); z-index: 10; border-color: rgba(94,34,127,0.5); }
+        .hover-lift:active { transform: translateY(0px) scale(0.98); }
+
+        /* ==================== إصلاحات الوضع المضيء الشاملة (Light Mode) ==================== */
+        body.light-mode { background-color: #e5e7eb; color: #111827; }
+        body.light-mode #app-container {
+            background-color: #f3f4f6;
+            background-image: radial-gradient(circle at 50% 100%, rgba(94, 34, 127, 0.06) 0%, transparent 60%);
+        }
+        body.light-mode #splash-screen { background-color: #f9fafb; }
+        
+        body.light-mode .glass-card { background: rgba(255, 255, 255, 0.95); border: 1px solid rgba(0, 0, 0, 0.08); box-shadow: 0 8px 20px rgba(0,0,0,0.05); }
+        body.light-mode .glass-card:hover { box-shadow: 0 15px 35px rgba(94,34,127,0.15); border-color: #5E227F; }
+        
+        body.light-mode .text-white:not(.keep-white) { color: #111827 !important; }
+        body.light-mode .text-gray-200, body.light-mode .text-gray-300 { color: #4b5563 !important; }
+        body.light-mode .text-gray-400 { color: #6b7280 !important; }
+        body.light-mode .text-gray-500 { color: #9ca3af !important; }
+        
+        body.light-mode .bg-black:not(.player-bg):not(#sidebar-overlay) { background-color: #ffffff !important; }
+        body.light-mode .overlay-bg { background-color: rgba(255,255,255,0.9) !important; }
+        body.light-mode .bottom-nav-bg { background-color: rgba(255,255,255,0.95) !important; border-color: rgba(0,0,0,0.08) !important; }
+        
+        body.light-mode .bg-white\/5, body.light-mode .bg-white\/10 { background-color: rgba(0,0,0,0.04) !important; border-color: rgba(0,0,0,0.08) !important; }
+        body.light-mode .border-white\/10, body.light-mode .border-white\/20, body.light-mode .border-white\/5 { border-color: rgba(0,0,0,0.1) !important; }
+        
+        body.light-mode .bg-gray-800 { background-color: #e5e7eb !important; color: #111827 !important; }
+        body.light-mode .hover\:bg-gray-700:hover { background-color: #d1d5db !important; }
+        
+        body.light-mode .header-gradient { background-image: linear-gradient(to bottom, rgba(255,255,255,0.98), rgba(255,255,255,0.8), transparent) !important; }
+        body.light-mode .card-bg-gradient { background-image: linear-gradient(to bottom right, rgba(94,34,127,0.1), #ffffff) !important; }
+        body.light-mode .card-overlay-gradient { background-image: linear-gradient(to top, rgba(255,255,255,0.95), rgba(255,255,255,0.4), transparent) !important; }
+        
+        body.light-mode .drop-shadow-md, body.light-mode .drop-shadow-lg { filter: none !important; }
+        
+        body.light-mode #sidebar { background-color: #ffffff !important; border-left: 1px solid rgba(0,0,0,0.05) !important; }
+        body.light-mode #sidebar .hover\:text-white:hover { color: #5E227F !important; }
+        body.light-mode .sport-input { background: rgba(0,0,0,0.03); color: #111; border-color: rgba(0,0,0,0.1); }
+        body.light-mode .sport-input:focus { border-color: #5E227F; background: #fff; }
+    </style>
+</head>
+<body class="selection:bg-sport-primary selection:text-white">
+
+    <div id="app-container">
+        
+        <!-- ======================= شاشة البداية ======================= -->
+        <div id="splash-screen">
+            <div class="relative w-32 h-32 mb-6 flex items-center justify-center">
+                <i class="fas fa-tv text-[80px] text-white absolute keep-white"></i>
+                <i class="fas fa-futbol text-[40px] text-black absolute mt-1 bg-white rounded-full"></i>
+                <i class="fas fa-play text-4xl text-sport-primary absolute mt-8 ml-10 animate-pulse-glow rounded-full bg-black/50"></i>
+            </div>
+            <h1 class="logo-text text-5xl text-white keep-white drop-shadow-lg mb-2">Hakim<span class="text-sport-primary">TV</span></h1>
+            <div class="flex items-center gap-3 text-sm font-bold text-gray-300 keep-white mt-2 mb-16 opacity-80">
+                <div class="h-px w-10 bg-gradient-to-r from-transparent to-sport-primary"></div>
+                الإصدار الاحترافي السحابي
+                <div class="h-px w-10 bg-gradient-to-l from-transparent to-sport-primary"></div>
+            </div>
+            <div class="absolute bottom-16 flex flex-col items-center">
+                <div class="relative flex justify-center items-center w-10 h-10 mb-3">
+                    <div class="absolute inset-0 rounded-full border-2 border-sport-primary border-t-transparent animate-spin"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======================= القائمة الجانبية ======================= -->
+        <div id="sidebar-overlay" class="absolute inset-0 bg-black/60 backdrop-blur-sm z-40 hidden transition-opacity duration-300 opacity-0" onclick="toggleSidebar()"></div>
+        <div id="sidebar" class="absolute top-0 right-0 h-full w-[280px] bg-[#0a0a0a] border-l border-white/5 z-50 transform translate-x-full transition-transform duration-400 ease-in-out flex flex-col shadow-2xl">
+            <div class="p-6 border-b border-white/10 flex items-center justify-between">
+                <h2 class="logo-text text-2xl text-white">Hakim<span class="text-sport-primary">TV</span></h2>
+                <button onclick="toggleSidebar()" class="text-gray-400 hover:text-white transition-all w-8 h-8 rounded-full bg-white/5 flex items-center justify-center hover:rotate-90">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto py-4 flex flex-col gap-1 px-3">
+                <p class="text-[11px] font-bold text-gray-500 mb-2 px-3 uppercase tracking-wider">تواصل معنا</p>
+                <a href="#" class="flex items-center gap-4 px-4 py-3.5 rounded-xl text-gray-300 hover:bg-white/5 hover:text-white transition-all group">
+                    <div class="w-8 flex justify-center"><i class="fab fa-telegram text-2xl text-[#0088cc] group-hover:scale-110 transition-transform"></i></div>
+                    <span class="font-semibold text-sm">قناتنا على تليجرام</span>
+                </a>
+                <a href="#" class="flex items-center gap-4 px-4 py-3.5 rounded-xl text-gray-300 hover:bg-white/5 hover:text-white transition-all group">
+                    <div class="w-8 flex justify-center"><i class="fab fa-facebook text-2xl text-[#1877F2] group-hover:scale-110 transition-transform"></i></div>
+                    <span class="font-semibold text-sm">صفحة الفيسبوك</span>
+                </a>
+                <div class="h-px bg-white/10 my-3 mx-4"></div>
+                <a href="#" class="flex items-center gap-4 px-4 py-3.5 rounded-xl text-gray-300 hover:bg-white/5 hover:text-white transition-all group">
+                    <div class="w-8 flex justify-center"><i class="fas fa-share-alt text-xl text-sport-primary transition-transform"></i></div>
+                    <span class="font-semibold text-sm">مشاركة التطبيق</span>
+                </a>
+            </div>
+            <div class="p-4 text-center text-xs font-semibold text-gray-500 border-t border-white/5">V 2.0 Cloud Edition</div>
+        </div>
+
+        <!-- ======================= Top App Bar ======================= -->
+        <header class="w-full h-16 px-4 lg:px-8 flex justify-between items-center z-30 shrink-0 border-b border-white/5 bg-gradient-to-b from-black/90 via-black/60 to-transparent transition-colors header-gradient">
+            <button id="header-btn-menu" onclick="toggleSidebar()" class="w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition-colors active:scale-90">
+                <i class="fas fa-bars text-lg"></i>
+            </button>
+            <button id="header-btn-back" onclick="goBackFromPlayer()" class="w-10 h-10 rounded-full hidden items-center justify-center text-white hover:bg-white/10 transition-colors active:scale-90">
+                <i class="fas fa-arrow-right text-lg"></i>
+            </button>
+            
+            <h1 id="header-title" class="logo-text text-xl lg:text-2xl text-white cursor-pointer select-none tracking-tight truncate max-w-[200px] lg:max-w-md text-center" onclick="triggerAdminAuth()">
+                Hakim<span class="text-sport-primary">TV</span>
+            </h1>
+            
+            <button onclick="toggleTheme()" class="w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition-colors active:scale-90 overflow-hidden">
+                <i id="theme-icon" class="fas fa-moon text-lg transition-transform duration-500"></i>
+            </button>
+        </header>
+
+        <!-- ======================= نافذة تسجيل الدخول للإدارة ======================= -->
+        <div id="auth-modal" class="absolute inset-0 bg-black/90 overlay-bg z-[60] hidden flex-col items-center justify-center backdrop-blur-md p-6 transition-opacity duration-300">
+            <div class="glass-card rounded-2xl p-6 w-full max-w-sm text-center" id="auth-card">
+                <div class="w-16 h-16 bg-sport-primary/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-sport-primary/30"><i class="fas fa-lock text-2xl text-sport-primary"></i></div>
+                <h3 class="text-xl font-bold mb-2 text-white">لوحة الإدارة</h3>
+                <input type="password" id="admin-password" class="sport-input mb-6 text-center text-2xl tracking-[0.5em]" placeholder="••••" dir="ltr">
+                <div class="flex gap-3">
+                    <button onclick="closeAuthModal()" class="flex-1 py-3 rounded-lg bg-gray-800 text-white keep-white font-bold text-sm">إلغاء</button>
+                    <button onclick="verifyAdmin()" class="flex-1 py-3 rounded-lg bg-sport-primary text-white keep-white font-bold shadow-lg shadow-sport-primary/30 text-sm">دخول</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======================= VIEW 1: باقة القنوات ======================= -->
+        <div id="view-channels" class="view-section active px-4 lg:px-10 py-6 h-full w-full relative z-10 pb-20">
+            <h2 class="text-2xl lg:text-3xl font-bold text-white mb-6 flex items-center gap-3 drop-shadow-md">
+                <i class="fas fa-bolt text-sport-primary"></i> باقة القنوات
+            </h2>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 lg:gap-5" id="channels-grid">
+                <!-- تُحقن القنوات هنا برمجياً -->
+            </div>
+        </div>
+
+        <!-- ======================= VIEW 2: شاشة البث (Player) ======================= -->
+        <div id="view-player" class="view-section px-4 lg:px-10 py-4 h-full w-full relative z-10">
+            <div class="absolute inset-0 bg-black/60 pointer-events-none -z-10 overlay-bg"></div>
+            
+            <div class="w-full max-w-5xl mx-auto flex flex-col h-full z-10">
+                <div class="relative w-full bg-black player-bg aspect-video rounded-xl lg:rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.8)] border border-white/20 shrink-0">
+                    <video id="videoPlayer" controls class="w-full h-full object-contain"></video>
+                    
+                    <div id="playerMessage" class="absolute inset-0 flex flex-col items-center justify-center bg-black/80 overlay-bg backdrop-blur-sm z-10 transition-opacity duration-500">
+                        <i id="loadingIcon" class="fas fa-circle-notch fa-spin text-4xl text-sport-primary mb-3 drop-shadow-[0_0_8px_rgba(94,34,127,0.8)]"></i>
+                        <i id="errorIcon" class="fas fa-exclamation-triangle text-4xl text-sport-primary mb-3 hidden"></i>
+                        <span id="playerMessageText" class="text-sm font-bold text-white tracking-wide text-center px-4">جاري الاتصال...</span>
+                    </div>
+                </div>
+
+                <div class="mt-6 shrink-0 glass-card rounded-xl p-4 lg:p-5 flex items-center justify-between border-t-2 border-t-sport-primary">
+                    <div class="flex items-center gap-3 flex-1 overflow-hidden pr-2">
+                        <div class="w-14 h-14 bg-white/10 rounded-lg flex items-center justify-center hidden sm:flex flex-col border border-white/10">
+                            <div class="px-1.5 py-0.5 bg-white keep-white rounded-sm text-sport-primary font-black text-[10px] italic leading-none mb-1 shadow-sm">beIN</div>
+                            <span class="text-xs font-sport font-black text-white leading-none drop-shadow-md">MAX</span>
+                        </div>
+                        <div>
+                            <h2 id="now-playing-title" class="text-lg lg:text-2xl font-bold text-white truncate logo-text tracking-wide">القناة</h2>
+                            <p class="text-xs lg:text-sm font-bold text-gray-300 mt-1.5 flex items-center gap-2" id="live-indicator-container">
+                                <span class="bg-red-600 text-white keep-white text-[9px] px-1.5 py-0.5 rounded font-black animate-pulse">LIVE</span>
+                                جودة عالية الدقة
+                            </p>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 lg:gap-4">
+                        <button onclick="refreshStream()" class="w-12 h-12 lg:w-14 lg:h-14 rounded-lg bg-white/10 border border-white/20 text-white flex items-center justify-center hover:bg-white/20 transition active:scale-90" title="تحديث السيرفر">
+                            <i id="refresh-icon" class="fas fa-sync-alt lg:text-xl"></i>
+                        </button>
+                        <button onclick="toggleFullScreen()" class="w-12 h-12 lg:w-14 lg:h-14 rounded-lg bg-sport-primary text-white keep-white flex items-center justify-center hover:brightness-110 shadow-lg shadow-sport-primary/30 transition active:scale-90" title="تكبير الشاشة">
+                            <i class="fas fa-expand lg:text-xl"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======================= VIEW 3: المباريات ======================= -->
+        <div id="view-matches" class="view-section px-4 lg:px-10 py-6 h-full w-full pb-20">
+            <h2 class="text-2xl lg:text-3xl font-bold text-white mb-6 flex items-center gap-3 drop-shadow-md">
+                <i class="fas fa-futbol text-sport-primary animate-pulse"></i> مباريات اليوم
+            </h2>
+            <div id="matches-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-6 pb-6">
+                <!-- تُحقن المباريات من السحابة هنا -->
+            </div>
+            <div id="no-matches-msg" class="hidden flex-col items-center justify-center py-20 opacity-40 h-full">
+                <i class="fas fa-calendar-times text-6xl mb-4 text-gray-500"></i>
+                <p class="font-bold text-lg text-gray-300">لا توجد مباريات حالياً</p>
+            </div>
+            <div id="loading-matches-msg" class="flex flex-col items-center justify-center py-20 h-full">
+                <i class="fas fa-circle-notch fa-spin text-4xl mb-4 text-sport-primary"></i>
+                <p class="font-bold text-lg text-gray-300">جاري جلب البيانات من السحابة...</p>
+            </div>
+        </div>
+
+        <!-- ======================= VIEW 4: لوحة التحكم المخصصة للمباريات ======================= -->
+        <div id="view-admin" class="view-section px-4 lg:px-10 py-6 h-full w-full relative z-10 max-w-4xl mx-auto pb-20">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl lg:text-3xl font-bold text-sport-primary flex items-center gap-3 drop-shadow-md">
+                    <i class="fas fa-cogs"></i> إدارة المباريات (Cloud)
+                </h2>
+                <button onclick="switchView('channels')" class="bg-gray-800 text-white keep-white text-xs px-4 py-2 rounded-lg hover:bg-gray-700 font-bold transition">عودة للرئيسية</button>
+            </div>
+            <div class="glass-card rounded-2xl p-5 lg:p-8 flex flex-col gap-4 border-t-2 border-t-sport-primary">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-6">
+                    <div>
+                        <label class="text-[11px] font-bold text-gray-400 mb-1.5 block uppercase">الفريق المضيف</label>
+                        <input type="text" id="team1-name" class="sport-input mb-2 text-sm" placeholder="مثال: ريال مدريد">
+                        <input type="text" id="team1-logo" class="sport-input text-[10px]" placeholder="رابط الشعار URL (اختياري)" dir="ltr">
+                    </div>
+                    <div>
+                        <label class="text-[11px] font-bold text-gray-400 mb-1.5 block uppercase">الفريق الضيف</label>
+                        <input type="text" id="team2-name" class="sport-input mb-2 text-sm" placeholder="مثال: برشلونة">
+                        <input type="text" id="team2-logo" class="sport-input text-[10px]" placeholder="رابط الشعار URL (اختياري)" dir="ltr">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-6 mt-2">
+                    <div>
+                        <label class="text-[11px] font-bold text-gray-400 mb-1.5 block uppercase">التوقيت</label>
+                        <input type="time" id="match-time" class="sport-input text-center font-sport tracking-wider text-lg">
+                    </div>
+                    <div>
+                        <label class="text-[11px] font-bold text-gray-400 mb-1.5 block uppercase">القناة الناقلة / المعلق</label>
+                        <input type="text" id="match-channel" class="sport-input text-sm" placeholder="مثال: beIN 1 | عصام الشوالي">
+                    </div>
+                </div>
+                <button id="save-match-btn" onclick="saveMatch()" class="mt-4 w-full py-4 rounded-xl bg-sport-primary text-white keep-white font-bold shadow-lg shadow-sport-primary/30 hover:brightness-110 active:scale-95 transition-all flex justify-center items-center gap-2">
+                    <i class="fas fa-cloud-upload-alt text-lg"></i> حفظ ورفع المباراة للسحابة
+                </button>
+            </div>
+            <button onclick="clearAllMatches()" class="mt-6 w-full max-w-sm mx-auto py-3.5 rounded-xl bg-black border border-sport-primary/50 text-sport-primary font-bold hover:bg-sport-primary hover:text-white transition-colors flex justify-center items-center gap-2">
+                <i class="fas fa-trash-alt"></i> مسح جميع البيانات من السحابة
+            </button>
+        </div>
+
+        <!-- ======================= Bottom Navigation ======================= -->
+        <nav id="bottom-nav" class="absolute bottom-0 w-full h-[70px] bg-black/95 bottom-nav-bg backdrop-blur-xl flex justify-around items-center shrink-0 border-t border-white/10 z-30 transition-transform duration-300">
+            <button onclick="switchView('channels')" id="nav-btn-channels" class="nav-btn flex-1 h-full flex flex-col justify-center items-center gap-1.5 text-sport-primary relative">
+                <div class="nav-glow absolute top-0 w-10 h-1 bg-sport-primary rounded-b-md shadow-[0_0_12px_rgba(94,34,127,0.8)] transition-opacity duration-300"></div>
+                <i class="fas fa-tv text-xl transition-transform duration-300 transform scale-110"></i>
+                <span class="text-[10px] font-bold tracking-wide">القنوات</span>
+            </button>
+            <button onclick="switchView('matches')" id="nav-btn-matches" class="nav-btn flex-1 h-full flex flex-col justify-center items-center gap-1.5 text-gray-500 hover:text-gray-400 relative">
+                <div class="nav-glow absolute top-0 w-10 h-1 bg-sport-primary rounded-b-md shadow-[0_0_12px_rgba(94,34,127,0.8)] opacity-0 transition-opacity duration-300"></div>
+                <i class="fas fa-calendar-alt text-xl transition-transform duration-300"></i>
+                <span class="text-[10px] font-bold tracking-wide">المباريات</span>
+            </button>
+        </nav>
+
+    </div>
+
+    <script>
+        // ================= التهيئة العامة والدخول =================
+        window.addEventListener('load', () => {
+            if (localStorage.getItem('theme') === 'light') {
+                document.body.classList.add('light-mode');
+                const themeIcon = document.getElementById('theme-icon');
+                if(themeIcon) { themeIcon.classList.remove('fa-moon'); themeIcon.classList.add('fa-sun'); }
+            }
+            setTimeout(() => {
+                const splash = document.getElementById('splash-screen');
+                splash.style.opacity = '0';
+                setTimeout(() => { splash.style.visibility = 'hidden'; }, 600);
+            }, 2000);
+            initApp();
+        });
+
+        function toggleTheme() {
+            const body = document.body; const themeIcon = document.getElementById('theme-icon');
+            themeIcon.style.transform = "rotate(180deg) scale(0.5)"; themeIcon.style.opacity = "0";
+            setTimeout(() => {
+                body.classList.toggle('light-mode');
+                if (body.classList.contains('light-mode')) {
+                    themeIcon.classList.remove('fa-moon'); themeIcon.classList.add('fa-sun');
+                    localStorage.setItem('theme', 'light');
+                } else {
+                    themeIcon.classList.remove('fa-sun'); themeIcon.classList.add('fa-moon');
+                    localStorage.setItem('theme', 'dark');
+                }
+                themeIcon.style.transform = "rotate(0deg) scale(1)"; themeIcon.style.opacity = "1";
+            }, 200);
+        }
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar'); const overlay = document.getElementById('sidebar-overlay');
+            if (sidebar.classList.contains('translate-x-full')) {
+                overlay.classList.remove('hidden'); void overlay.offsetWidth;
+                overlay.classList.remove('opacity-0'); sidebar.classList.remove('translate-x-full');
+            } else {
+                overlay.classList.add('opacity-0'); sidebar.classList.add('translate-x-full');
+                setTimeout(() => { overlay.classList.add('hidden'); }, 300);
+            }
+        }
+
+        // ================= القنوات والداتا =================
+        const liveChannels = [
+            { id: 1, name: "beIN MAX 1", url: "http://195.182.16.45:8080/live//357643467990765/Ofgo3yz8CH/460862.ts?token=yaUfacH.ayXfU.X.aXHHU.ydzdyHbUXy.X.y.FR.ts.397191e5fe0c40ce5d421efdc53e646df96c3aa2305c4f191fd633d81110bbff.5089.VmlyZ2luIE1lZGlh.dG95dGNsLnh5eg==" },
+            { id: 2, name: "beIN MAX 2", url: "http://217.60.15.138:2095/live//357643467990765/Ofgo3yz8CH/391095.ts?token=yaUfacH.faXaz.X.cUXzH.ydzdyfXUfU.X.y.FR.ts.7cd716761244d53101d9aba611c70dee0788f749a3561640a9813c504aec3b3e.5089.VmlyZ2luIE1lZGlh.dG95dGNsLnh5eg==" },
+            { id: 3, name: "beIN MAX 3", url: "http://172.110.216.102:2095/live//357643467990765/Ofgo3yz8CH/325805.ts?token=yaUfacH.bHaX.X.ddaz.ydzdyfXfaa.X.y.FR.ts.6bfedb9d2e94e30a469d09f0202bd55d64721df39480813b20cfe9f303b1c9e2.5089.VmlyZ2luIE1lZGlh.dG95dGNsLnh5eg==" },
+            { id: 4, name: "beIN MAX 4", url: "http://172.110.216.170:2095/live//357643467990765/Ofgo3yz8CH/325796.ts?token=yaUfacH.abdHy.X.yXzXU.ydzdyfXUHd.X.y.FR.ts.a4720f174c6948abd3536e59c5b37e9ef26930a0df003de1b43dd658751e1cee.5089.VmlyZ2luIE1lZGlh.dG95dGNsLnh5eg==" },
+            { id: 5, name: "beIN MAX 5", url: "http://172.110.216.84:2095/live//357643467990765/Ofgo3yz8CH/325797.ts?token=yaUfacH.cUUab.X.ayyfd.ydzdyfXcab.X.y.FR.ts.dd1a155019e503c4450b11eb15b2b14dfed8198571ac4bce43c79e63c98c1f92.5089.VmlyZ2luIE1lZGlh.dG95dGNsLnh5eg==" },
+            { id: 6, name: "beIN MAX 6", url: "http://217.60.15.138:2095/live//357643467990765/Ofgo3yz8CH/325798.ts?token=yaUfacH.azcUz.X.dUHf.ydzdyfXcdb.X.y.FR.ts.d85db37e8b78aec8327aa26f54b64f7390a8b2479d90531a94b2c954e98687d4.5089.VmlyZ2luIE1lZGlh.dG95dGNsLnh5eg==" },
+            { id: 7, name: "beIN MAX 7", url: "http://172.110.216.102:2095/live//357643467990765/Ofgo3yz8CH/325799.ts?token=yaUfacH.UXaHd.X.dzXf.ydzdyfXbUU.X.y.FR.ts.c5c0290a52ed650ef8031805d866edb951c63ee481756db84abb88f8c0f54e1b.5089.VmlyZ2luIE1lZGlh.dG95dGNsLnh5eg==" },
+            { id: 8, name: "beIN MAX 8", url: "http://172.110.216.170:2095/live//357643467990765/Ofgo3yz8CH/325800.ts?token=yaUfacH.affzy.X.cffUy.ydzdyfXbdX.X.y.FR.ts.11a7550e31a68d430b5e7c55764119ff436bf8e65fa9f0d9d2880cca7b2587e1.5089.VmlyZ2luIE1lZGlh.dG95dGNsLnh5eg==" },
+            { id: 9, name: "beIN MAX 9", url: "http://172.110.216.170:2095/live//357643467990765/Ofgo3yz8CH/325801.ts?token=yaUfacH.afdcz.X.yXzdz.ydzdyfXdya.X.y.FR.ts.5c22810b3fd61a51682424744e8160c6b468ed254848c1bb94dd06233f8a88c9.5089.VmlyZ2luIE1lZGlh.dG95dGNsLnh5eg==" }
+        ];
+
+        let player = null;
+        let activeChannelId = null;
+
+        // ================= التوجيه وإيقاف البث =================
+        function stopStream() {
+            if (player) { player.unload(); player.detachMediaElement(); player.destroy(); player = null; }
+            activeChannelId = null;
+        }
+
+        function goBackFromPlayer() {
+            stopStream();
+            switchView('channels');
+        }
+
+        function switchView(viewName) {
+            document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active'));
+            document.getElementById(`view-${viewName}`).classList.add('active');
+
+            const headerBtnMenu = document.getElementById('header-btn-menu');
+            const headerBtnBack = document.getElementById('header-btn-back');
+            const headerTitle = document.getElementById('header-title');
+            const bottomNav = document.getElementById('bottom-nav');
+
+            if (viewName !== 'player') { stopStream(); }
+
+            if (viewName === 'player') {
+                headerBtnMenu.classList.add('hidden');
+                headerBtnBack.classList.remove('hidden'); headerBtnBack.classList.add('flex');
+                bottomNav.style.transform = 'translateY(100%)'; 
+            } else {
+                headerBtnMenu.classList.remove('hidden');
+                headerBtnBack.classList.add('hidden'); headerBtnBack.classList.remove('flex');
+                headerTitle.innerHTML = 'Hakim<span class="text-sport-primary">TV</span>';
+                bottomNav.style.transform = 'translateY(0)';
+            }
+
+            if(viewName === 'channels' || viewName === 'matches') {
+                document.querySelectorAll('.nav-btn').forEach(b => {
+                    b.classList.remove('text-sport-primary'); b.classList.add('text-gray-500');
+                    b.querySelector('.nav-glow').style.opacity = '0';
+                    b.querySelector('i').classList.remove('scale-110');
+                });
+                const activeBtn = document.getElementById(`nav-btn-${viewName}`);
+                if(activeBtn) {
+                    activeBtn.classList.add('text-sport-primary'); activeBtn.classList.remove('text-gray-500');
+                    activeBtn.querySelector('.nav-glow').style.opacity = '1';
+                    activeBtn.querySelector('i').classList.add('scale-110');
+                }
+            }
+        }
+
+        // ================= الإدارة السرية =================
+        let headerClickCount = 0; let headerClickTimer;
+        function triggerAdminAuth() {
+            headerClickCount++; clearTimeout(headerClickTimer);
+            if (headerClickCount >= 5) {
+                const modal = document.getElementById('auth-modal');
+                modal.classList.remove('hidden');
+                setTimeout(() => { modal.classList.remove('opacity-0'); }, 10);
+                document.getElementById('admin-password').value = ''; headerClickCount = 0;
+            } else { headerClickTimer = setTimeout(() => { headerClickCount = 0; }, 2000); }
+        }
+        function closeAuthModal() { 
+            const modal = document.getElementById('auth-modal');
+            modal.classList.add('opacity-0'); setTimeout(() => { modal.classList.add('hidden'); }, 300);
+        }
+        function verifyAdmin() {
+            if (document.getElementById('admin-password').value === '1234') { closeAuthModal(); switchView('admin'); } 
+            else { alert('الرمز غير صحيح!'); }
+        }
+
+        // ================= شبكة القنوات =================
+        function renderChannelsGrid() {
+            const grid = document.getElementById('channels-grid');
+            grid.innerHTML = '';
+            
+            liveChannels.forEach((channel, index) => {
+                const card = document.createElement('button');
+                card.className = "relative w-full aspect-video rounded-[1rem] overflow-hidden glass-card group cursor-pointer hover-lift grid-item-enter outline-none";
+                card.style.animationDelay = `${index * 0.05}s`;
+                card.onclick = () => { openPlayerView(channel); };
+                
+                card.innerHTML = `
+                    <div class="absolute inset-0 bg-gradient-to-br from-sport-primary/30 to-black z-0 card-bg-gradient"></div>
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent z-0 card-overlay-gradient"></div>
+                    <div class="absolute top-2 right-2 bg-red-600 text-white keep-white text-[8px] md:text-[10px] px-1.5 py-0.5 rounded font-black tracking-widest z-10 shadow-md">LIVE</div>
+                    
+                    <div class="absolute inset-0 flex flex-col items-center justify-center p-2 z-10">
+                        <div class="flex flex-col items-center justify-center gap-1 transform group-hover:scale-110 transition-transform duration-300">
+                            <div class="px-1.5 py-0.5 bg-white keep-white rounded-sm text-sport-primary font-black text-xs md:text-sm italic tracking-tighter leading-none shadow-sm">beIN</div>
+                            <span class="text-lg md:text-2xl font-sport font-black text-white drop-shadow-lg leading-none mt-1">MAX ${channel.id}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="absolute bottom-1.5 w-full text-center z-10">
+                        <span class="text-[9px] md:text-xs font-bold tracking-wide text-gray-200 drop-shadow-md truncate px-1 block">${channel.name}</span>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        // ================= مشغل الفيديو وإصلاح خطأ الفتح =================
+        const videoElement = document.getElementById('videoPlayer');
+        const nowPlayingTitle = document.getElementById('now-playing-title');
+        const playerMessage = document.getElementById('playerMessage');
+        const playerMessageText = document.getElementById('playerMessageText');
+        const loadingIcon = document.getElementById('loadingIcon');
+        const errorIcon = document.getElementById('errorIcon');
+
+        function openPlayerView(channel) {
+            document.getElementById('header-title').textContent = channel.name;
+            switchView('player');
+            playStream(channel);
+        }
+
+        function showMessage(text, isError = false) {
+            playerMessageText.textContent = text;
+            playerMessage.classList.remove('hidden', 'opacity-0');
+            if(isError) {
+                loadingIcon.classList.add('hidden'); errorIcon.classList.remove('hidden');
+                playerMessageText.classList.add('text-red-500');
+            } else {
+                loadingIcon.classList.remove('hidden'); errorIcon.classList.add('hidden');
+                playerMessageText.classList.remove('text-red-500');
+            }
+        }
+
+        function hideMessage() {
+            playerMessage.classList.add('opacity-0');
+            setTimeout(() => { playerMessage.classList.add('hidden'); }, 500);
+        }
+
+        function refreshStream() {
+            if (!activeChannelId) return;
+            const icon = document.getElementById('refresh-icon');
+            icon.classList.add('fa-spin'); setTimeout(() => icon.classList.remove('fa-spin'), 1000);
+            playStream(liveChannels.find(c => c.id === activeChannelId));
+        }
+
+        function toggleFullScreen() {
+            const elem = videoElement;
+            if (!document.fullscreenElement) {
+                if (elem.requestFullscreen) elem.requestFullscreen();
+                else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+                else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+                else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+            }
+        }
+
+        function playStream(channel) {
+            activeChannelId = channel.id;
+            nowPlayingTitle.textContent = channel.name;
+            
+            // إضافة التحقق من الأمان لمعالجة خطأ Failed to fetch في متصفح HTTPS
+            if (window.location.protocol === 'https:' && channel.url.startsWith('http:')) {
+                showMessage('⚠️ يمنع متصفحك تشغيل روابط (HTTP) داخل هذه الصفحة الآمنة (HTTPS). قم بتحميل الملف وفتحه محلياً من جهازك ليعمل البث.', true);
+                return;
+            }
+            
+            showMessage('جاري فك التشفير و الإتصال...');
+            
+            if (player) { player.unload(); player.detachMediaElement(); player.destroy(); }
+            
+            if (mpegts.getFeatureList().mseLivePlayback) {
+                player = mpegts.createPlayer({ type: 'm2ts', isLive: true, url: channel.url, cors: true });
+                player.attachMediaElement(videoElement);
+                player.load();
+                
+                player.on(mpegts.Events.ERROR, (errType, errDetail, errInfo) => {
+                    let errMsg = 'فشل الاتصال. السيرفر محمي أو منتهي الصلاحية.';
+                    if (errInfo && errInfo.msg === 'Failed to fetch') {
+                         errMsg = 'فشل جلب البيانات. قم بتحميل هذا الملف وفتحه بشكل محلي عبر متصفحك (CORS/Mixed Content).';
+                    }
+                    showMessage(errMsg, true);
+                });
+                
+                player.play().then(() => hideMessage()).catch(() => { showMessage('إضغط لتشغيل الفيديو', false); loadingIcon.classList.add('hidden'); });
+            } else {
+                // دعم إحتياطي للمتصفحات مثل Safari
+                videoElement.src = channel.url;
+                videoElement.play().then(() => hideMessage()).catch(() => { showMessage('غير مدعوم أو فشل الاتصال', true); });
+            }
+        }
+        videoElement.addEventListener('playing', hideMessage);
+
+        // ================= المباريات وقاعدة البيانات السحابية (JSONBin) =================
+        const JSON_BIN_ID = '6a2a2c3df5f4af5e29dc6d08'; 
+        const JSON_API_KEY = '$2a$10$2.qnwRQfkI8MtHWCv4hS2.tV7V2H1Z62sMA.7mFGp0A24x3ptEJp2';
+        const JSON_API_URL = `https://api.jsonbin.io/v3/b/${JSON_BIN_ID}`;
+
+        let matchesList = [];
+        const defaultLogo = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23666'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z'/%3E%3C/svg%3E";
+
+        async function fetchMatchesFromCloud() {
+            document.getElementById('loading-matches-msg').classList.remove('hidden');
+            document.getElementById('no-matches-msg').classList.add('hidden');
+            
+            try {
+                const response = await fetch(`${JSON_API_URL}/latest`, {
+                    headers: { 'X-Master-Key': JSON_API_KEY }
+                });
+                if (!response.ok) throw new Error('فشل الاتصال بقاعدة البيانات');
+                
+                const data = await response.json();
+                matchesList = data.record.matches || [];
+                localStorage.setItem('iptv_matches_cloud_backup', JSON.stringify(matchesList));
+            } catch (error) {
+                console.error(error);
+                matchesList = JSON.parse(localStorage.getItem('iptv_matches_cloud_backup')) || [];
+            }
+            document.getElementById('loading-matches-msg').classList.add('hidden');
+            renderMatches();
+        }
+
+        async function syncMatchesToCloud() {
+            try {
+                const response = await fetch(JSON_API_URL, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSON_API_KEY },
+                    body: JSON.stringify({ matches: matchesList })
+                });
+                if (!response.ok) throw new Error('فشل الرفع');
+                localStorage.setItem('iptv_matches_cloud_backup', JSON.stringify(matchesList));
+                return true;
+            } catch (error) {
+                console.error(error);
+                alert("حدث خطأ أثناء مزامنة البيانات مع السحابة!");
+                return false;
+            }
+        }
+
+        async function saveMatch() {
+            const t1 = document.getElementById('team1-name').value; const t1L = document.getElementById('team1-logo').value || defaultLogo;
+            const t2 = document.getElementById('team2-name').value; const t2L = document.getElementById('team2-logo').value || defaultLogo;
+            const time = document.getElementById('match-time').value; const channel = document.getElementById('match-channel').value;
+            
+            if(!t1 || !t2 || !time) return alert("أكمل البيانات الأساسية");
+            
+            const saveBtn = document.getElementById('save-match-btn');
+            const originalBtnHTML = saveBtn.innerHTML;
+            saveBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-lg"></i> جاري الرفع...';
+            saveBtn.disabled = true;
+
+            matchesList.push({ id: Date.now(), team1: { name: t1, logo: t1L }, team2: { name: t2, logo: t2L }, time: time, channel: channel });
+            
+            const success = await syncMatchesToCloud();
+            if(success) {
+                document.querySelectorAll('.sport-input').forEach(input => input.value = '');
+                renderMatches(); switchView('matches'); 
+            }
+            
+            saveBtn.innerHTML = originalBtnHTML; saveBtn.disabled = false;
+        }
+
+        async function clearAllMatches() { 
+            if(confirm("هل أنت متأكد من حذف كل المباريات من السحابة؟")) { 
+                matchesList = []; 
+                await syncMatchesToCloud();
+                renderMatches(); 
+            } 
+        }
+
+        function renderMatches() {
+            const container = document.getElementById('matches-container'); const noMsg = document.getElementById('no-matches-msg');
+            container.innerHTML = '';
+            if (matchesList.length === 0) { noMsg.classList.remove('hidden'); noMsg.classList.add('flex'); } 
+            else {
+                noMsg.classList.add('hidden'); noMsg.classList.remove('flex');
+                matchesList.forEach((match, index) => {
+                    const card = document.createElement('div');
+                    card.className = "glass-card p-4 rounded-2xl flex justify-between items-center relative overflow-hidden list-item-enter hover-lift h-full";
+                    card.style.animationDelay = `${index * 0.1}s`;
+                    
+                    card.innerHTML = `
+                        <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-sport-primary rounded-full blur-[50px] opacity-10"></div>
+                        <div class="flex flex-col items-center gap-2 w-1/3 text-center z-10">
+                            <div class="relative w-14 h-14 bg-white/5 rounded-full p-2.5 border border-white/10 flex items-center justify-center shadow-inner overflow-hidden">
+                                <img src="${match.team1.logo}" class="absolute inset-0 w-full h-full object-contain p-2 z-10" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                                <i class="fas fa-shield-alt text-2xl text-gray-500 z-0 ${match.team1.logo === defaultLogo ? 'block' : 'hidden'}"></i>
+                            </div>
+                            <span class="text-xs lg:text-sm font-bold leading-tight">${match.team1.name}</span>
+                        </div>
+                        <div class="flex flex-col items-center w-1/3 px-2 z-10">
+                            <span class="text-[10px] text-gray-400 mb-1 tracking-wider">مكة المكرمة</span>
+                            <span class="text-2xl lg:text-3xl font-black text-white logo-text tracking-widest drop-shadow-md">${match.time}</span>
+                            <span class="text-[10px] lg:text-xs bg-sport-primary/10 text-sport-primary border border-sport-primary/30 px-2 py-1 rounded mt-2 truncate max-w-full font-bold shadow-sm">${match.channel || 'قريباً'}</span>
+                        </div>
+                        <div class="flex flex-col items-center gap-2 w-1/3 text-center z-10">
+                            <div class="relative w-14 h-14 bg-white/5 rounded-full p-2.5 border border-white/10 flex items-center justify-center shadow-inner overflow-hidden">
+                                <img src="${match.team2.logo}" class="absolute inset-0 w-full h-full object-contain p-2 z-10" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                                <i class="fas fa-shield-alt text-2xl text-gray-500 z-0 ${match.team2.logo === defaultLogo ? 'block' : 'hidden'}"></i>
+                            </div>
+                            <span class="text-xs lg:text-sm font-bold leading-tight">${match.team2.name}</span>
+                        </div>
+                    `;
+                    container.appendChild(card);
+                });
+            }
+        }
+
+        // بدء التطبيق
+        function initApp() { 
+            renderChannelsGrid(); 
+            fetchMatchesFromCloud(); 
+        }
+    </script>
+</body>
+</html>
