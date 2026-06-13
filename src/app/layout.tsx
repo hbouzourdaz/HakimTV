@@ -19,6 +19,19 @@ const montserrat = Montserrat({
 export const metadata: Metadata = {
   title: 'Hakim TV - Next.js',
   description: 'Professional TV Streaming Application',
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+    viewportFit: 'cover',
+  },
+  themeColor: '#000000',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Hakim TV',
+  },
 };
 
 export default function RootLayout({
